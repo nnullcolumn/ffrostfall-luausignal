@@ -62,7 +62,7 @@ TEST("connections", function()
 			called += 1
 		end)
 
-		sig:disconnectAll()
+		sig:disconnect_all()
 
 		sig:fire()
 
@@ -140,6 +140,30 @@ TEST("firing", function()
 		sig:fire()
 
 		CHECK(order[1] == 2 and order[2] == 1)
+	end
+
+	CASE("multiple arguments")
+	do
+		local sig = signal()
+
+		local values = { true, false, 5, 1, 0 }
+		local passed_values = {}
+
+		sig:connect(function(...)
+			passed_values = { ... }
+		end)
+
+		sig:fire(table.unpack(values))
+
+		local equal = true
+		for i, v in values do
+			if passed_values[i] ~= v then
+				equal = false
+				break
+			end
+		end
+
+		CHECK(equal)
 	end
 end)
 

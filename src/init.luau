@@ -20,14 +20,15 @@ local error_tbl = {
 
 local function yield_loop()
 	while true do
-		local sig: InternalIdentity<any>, arg: any = coroutine.yield()
+		local sig: InternalIdentity<any>, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10 =
+			coroutine.yield()
 
 		local ref = free_thread
 		free_thread = nil
 
 		while sig._head ~= 0 do
 			sig._head -= 1
-			sig[sig._head + 1](arg)
+			sig[sig._head + 1](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10)
 		end
 
 		free_thread = ref
@@ -36,7 +37,7 @@ end
 
 local signal = {}
 signal.__index = signal
-type InternalIdentity<T> = setmetatable<{ _head: number, [number]: (T) -> () }, typeof(signal)>
+type InternalIdentity<T...> = setmetatable<{ _head: number, [number]: (T...) -> () }, typeof(signal)>
 
 --[=[
 	@class signal
@@ -48,7 +49,7 @@ type InternalIdentity<T> = setmetatable<{ _head: number, [number]: (T) -> () }, 
 	signal()
 	```
 ]=]
-local function constructor<T>(): InternalIdentity<T>
+local function constructor<T...>(): InternalIdentity<T...>
 	return setmetatable({
 		_head = 0,
 	}, signal)
@@ -85,7 +86,7 @@ end
 	@param callback (T) -> ()
 	@return () -> ()
 ]=]
-function signal.connect<T>(self: InternalIdentity<T>, callback: (T) -> ())
+function signal.connect<T...>(self: InternalIdentity<T...>, callback: (T...) -> ())
 	table.insert(self, callback)
 
 	local function disconnecter()
@@ -114,15 +115,14 @@ end
 	@param data ...
 	@return void
 ]=]
-function signal.fire<T>(self: InternalIdentity<T>, arg: T)
+function signal.fire<T...>(self: InternalIdentity<T...>, ...)
 	self._head = #self
 	while self._head ~= 0 do
 		if not free_thread then
 			free_thread = tspawn(yield_loop)
 		end
 
-		-- Type states don't take into account assigning yet
-		task.spawn(free_thread, self, arg)
+		(task.spawn :: any)(free_thread, self, ...)
 	end
 end
 
@@ -136,13 +136,13 @@ end
 	@param callback (T) -> ()
 	@return () -> ()
 ]=]
-function signal.once<T>(self: InternalIdentity<T>, callback: (T) -> ())
+function signal.once<T...>(self: InternalIdentity<T...>, callback: (T...) -> ())
 	local disconnect
-	disconnect = self:connect(function(arg)
+	disconnect = self:connect(function(...)
 		assert(disconnect ~= nil, "Luau")
 		disconnect()
 
-		callback(arg)
+		callback(...)
 	end)
 end
 
@@ -155,16 +155,16 @@ end
 	
 	@return T
 ]=]
-function signal.wait<T>(self: InternalIdentity<T>): T
+function signal.wait<T...>(self: InternalIdentity<T...>): T...
 	local running = coroutine.running()
 
-	self:once(function(arg)
+	self:once(function(...)
 		assert(
 			coroutine.status(running) == "suspended",
 			":wait() called, then another thread resumed the waiting thread. Please dont do that :("
 		)
 
-		tspawn(running, arg)
+		tspawn(running, ...)
 	end)
 
 	return coroutine.yield()
@@ -176,7 +176,7 @@ end
 	
 	Disconnects all connections to the signal. This is an efficient operation, utilizing `table.clear`.
 ]=]
-function signal.disconnectAll<T>(self: InternalIdentity<T>)
+function signal.disconnect_all<T...>(self: InternalIdentity<T...>)
 	table.clear(self)
 end
 
@@ -189,19 +189,19 @@ end
 	
 	This will prevent and raise an error upon any attempts to use the signal, which is useful for debugging & catching leaks.
 ]=]
-function signal.delete<T>(self: InternalIdentity<T>): ()
-	self:disconnectAll()
+function signal.delete<T...>(self: InternalIdentity<T...>): ()
+	self:disconnect_all()
 
 	setmetatable(self, error_tbl)
 end
 
-export type Identity<T = any> = {
-	fire: (self: Identity<T>, arg: T) -> (),
-	connect: (self: Identity<T>, callback: (arg: T) -> ()) -> () -> (),
-	once: (self: Identity<T>, callback: (arg: T) -> ()) -> () -> (),
-	wait: (self: Identity<T>) -> T,
-	disconnectAll: (self: Identity<T>) -> (),
-	delete: (self: Identity<T>) -> (),
+export type Identity<T...> = {
+	fire: (self: Identity<T...>, T...) -> (),
+	connect: (self: Identity<T...>, callback: (T...) -> ()) -> () -> (),
+	once: (self: Identity<T...>, callback: (T...) -> ()) -> () -> (),
+	wait: (self: Identity<T...>) -> T...,
+	disconnect_all: (self: Identity<T...>) -> (),
+	delete: (self: Identity<T...>) -> (),
 }
 
-return constructor :: <T>() -> Identity<T>
+return constructor :: <T...>() -> Identity<T...>
