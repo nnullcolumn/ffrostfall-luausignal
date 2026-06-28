@@ -3,6 +3,8 @@
 ### 0.8.0-rc.1
 
 - Added `collect` method
+- Fixed disconnect table
+- Improved `disconnect_all` by making it use `table.move` over `table.clear` (Clears array portion, not hashmap portion)
 
 ### 0.7.0
 
