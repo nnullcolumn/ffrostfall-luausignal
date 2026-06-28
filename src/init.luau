@@ -1,29 +1,46 @@
 --!optimize 2
 --!native
-local task = task or require("@lune/task")
+local task = task or require("@lute/task")
 
-local tspawn = task.spawn
+const tspawn = task.spawn
+const NIL_TABLE = {}
 
 local free_thread: thread? = nil
+
+local function bitmask(idx: number)
+	return 2 ^ idx
+end
+
+local function set_bit(int: number, mask: number): number
+	return bit32.bor(int, mask)
+end
+
+local function get_bit(int: number, mask: number): boolean
+	return bit32.band(int, mask) ~= 0
+end
+
+local function all_bits_set(bit_stack: number, mask: number): boolean
+	return bit32.band(bit_stack, mask) == mask
+end
 
 local function deleted_signal_err()
 	error("Cannot fire a deleted signal", 2)
 end
 
-local error_tbl = {
+const error_tbl = {
 	fire = deleted_signal_err,
 	connect = deleted_signal_err,
 	once = deleted_signal_err,
 	wait = deleted_signal_err,
-	disconnectAll = deleted_signal_err,
+	disconnect_all = deleted_signal_err,
 }
 
-local function yield_loop()
+const function yield_loop()
 	while true do
-		local sig: InternalIdentity<any>, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10 =
+		const sig: InternalIdentity<any>, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10 =
 			coroutine.yield()
 
-		local ref = free_thread
+		const ref = free_thread
 		free_thread = nil
 
 		while sig._head ~= 0 do
@@ -35,9 +52,15 @@ local function yield_loop()
 	end
 end
 
-local signal = {}
+const signal = {}
 signal.__index = signal
-type InternalIdentity<T...> = setmetatable<{ _head: number, [number]: (T...) -> () }, typeof(signal)>
+type InternalIdentity<T...> = setmetatable<{
+	_head: number,
+	_collect_queue: { { [number]: unknown, seen_by: number } },
+	_collector_count: number,
+	_collector_mask: number,
+	[number]: (T...) -> (),
+}, typeof(signal)>
 
 --[=[
 	@class signal
@@ -49,9 +72,12 @@ type InternalIdentity<T...> = setmetatable<{ _head: number, [number]: (T...) -> 
 	signal()
 	```
 ]=]
-local function constructor<T...>(): InternalIdentity<T...>
+const function constructor<T...>(): InternalIdentity<T...>
 	return setmetatable({
 		_head = 0,
+		_collect_queue = {} :: any,
+		_collector_count = 0,
+		_collector_mask = 0,
 	}, signal)
 end
 
@@ -116,13 +142,17 @@ end
 	@return void
 ]=]
 function signal.fire<T...>(self: InternalIdentity<T...>, ...)
+	if self._collector_count >= 1 then
+		table.insert(self._collect_queue, { ..., seen_by = 0 })
+	end
+
 	self._head = #self
 	while self._head ~= 0 do
 		if not free_thread then
 			free_thread = tspawn(yield_loop)
 		end
 
-		(task.spawn :: any)(free_thread, self, ...)
+		(tspawn :: any)(free_thread, self, ...)
 	end
 end
 
@@ -170,6 +200,37 @@ function signal.wait<T...>(self: InternalIdentity<T...>): T...
 	return coroutine.yield()
 end
 
+function signal.collect<T...>(self: InternalIdentity<T...>): () -> T...
+	self._collector_count += 1
+	const mask = bitmask(self._collector_count - 1)
+	self._collector_mask = bit32.lshift(1, self._collector_count - 1)
+
+	const function iter(): ...unknown
+		const collect_queue = self._collect_queue
+
+		for i = #collect_queue, 1, -1 do
+			const item = collect_queue[i]
+			if get_bit(item.seen_by, mask) then
+				continue
+			end
+
+			local next_seen_by = set_bit(item.seen_by, mask)
+
+			if all_bits_set(next_seen_by, self._collector_mask) then
+				table.remove(collect_queue, i)
+				return table.unpack(item)
+			end
+
+			item.seen_by = next_seen_by
+			return table.unpack(item)
+		end
+
+		return
+	end
+
+	return iter :: any
+end
+
 --[=[
 	@method disconnectAll
 	@within signal
@@ -177,7 +238,7 @@ end
 	Disconnects all connections to the signal. This is an efficient operation, utilizing `table.clear`.
 ]=]
 function signal.disconnect_all<T...>(self: InternalIdentity<T...>)
-	table.clear(self)
+	table.move(NIL_TABLE, 1, #self, 1, self)
 end
 
 --[=[
@@ -202,6 +263,7 @@ export type Identity<T...> = {
 	wait: (self: Identity<T...>) -> T...,
 	disconnect_all: (self: Identity<T...>) -> (),
 	delete: (self: Identity<T...>) -> (),
+	collect: (self: Identity<T...>) -> () -> T...,
 }
 
 return constructor :: <T...>() -> Identity<T...>

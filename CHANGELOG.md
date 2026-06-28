@@ -1,5 +1,13 @@
 # Changelog
 
+### 0.8.0-rc.1
+
+- Added `collect` method
+
+### 0.7.0
+
+- Added support for multiple arguments
+
 ### 0.6.1
 
 - Added ability to use type instantiation on the constructor

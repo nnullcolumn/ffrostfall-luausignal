@@ -2,6 +2,7 @@
 	"luau-lsp.sourcemap.autogenerate": false,
 	"luau-lsp.sourcemap.sourcemapFile": "sourcemap.json",
 	"luau-lsp.fflags.enableNewSolver": true,
-	
-	"prettier.useTabs": true
+
+	"prettier.useTabs": true,
+	"stylua.targetReleaseVersion": "latest"
 }

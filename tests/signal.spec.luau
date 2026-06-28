@@ -1,6 +1,6 @@
 local signal = require("@src")
 local TEST, CASE, CHECK, FINISH = require("@vendor/testkit").test()
-local task = require("@lune/task")
+local task = require("@lute/task")
 
 TEST("signal", function()
 	CASE("creating doesn't error, and returns a signal")
@@ -332,6 +332,104 @@ TEST("yielding/error cases", function()
 		sig:fire()
 
 		CHECK(count == 3)
+	end
+end)
+
+TEST("collect", function()
+	CASE("basic collection")
+	do
+		local sig = signal<<(boolean)>>()
+
+		local iter = sig:collect()
+
+		sig:fire(true)
+
+		local set_value = false
+		for value in iter do
+			set_value = value
+		end
+		CHECK(set_value == true)
+	end
+	
+	CASE("FILO semantics")
+	do
+		local sig = signal<<(number)>>()
+
+		local iter = sig:collect()
+
+		sig:fire(1)
+		sig:fire(2)
+		sig:fire(3)
+
+		local i = 3
+		
+		for value in iter do
+			CHECK(value == i)
+			i -= 1
+		end
+		
+		CHECK(i == 0)
+	end
+	
+	CASE("constructing a few collectors works")
+	do
+		local sig = signal<<(number)>>()
+
+		local iter1 = sig:collect()
+		local iter2 = sig:collect()
+		
+		sig:fire(1)
+		sig:fire(2)
+		sig:fire(3)
+
+		local i = 3
+		
+		for value in iter1 do
+			CHECK(value == i)
+			i -= 1
+		end
+		
+		CHECK(i == 0)
+
+		i = 3
+		
+		for value in iter2 do
+			CHECK(value == i)
+			i -= 1
+		end
+		CHECK(i == 0 )
+	end
+	
+	CASE("cleanup works")
+	do
+		local sig = signal<<(number)>>()
+
+		local iter1 = sig:collect()
+		local iter2 = sig:collect()
+		
+		sig:fire(1)
+		sig:fire(2)
+		sig:fire(3)
+
+		for value in iter1 do
+		end
+		
+		for value in iter2 do
+		end
+		
+		CHECK(#sig._collect_queue == 0)
+	end
+	
+	CASE("iteration w no events works")
+	do
+		local sig = signal<<(string)>>()
+		
+		local iter1 = sig:collect()
+		
+		for _ in iter1 do
+		end
+		
+		CHECK(true)
 	end
 end)
 
