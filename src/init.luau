@@ -61,7 +61,7 @@ type InternalIdentity<T...> = setmetatable<{
 	signal()
 	```
 ]=]
-local function constructor<T...>(): InternalIdentity<T...>
+const function constructor<T...>(): InternalIdentity<T...>
 	return setmetatable({
 		_head = 0,
 
